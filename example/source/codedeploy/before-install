@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+set -vx
+
+echo hello from before-install hook
+
+wd=/opt/codedeploy-agent/deployment-root/${DEPLOYMENT_GROUP_ID}/${DEPLOYMENT_ID}/deployment-archive
+
+docker run -v ${wd}:${wd} --rm amazonlinux:2 bash -c "ls -lah ${wd}"

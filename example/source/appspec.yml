@@ -1,0 +1,18 @@
+version: 0.0
+os: linux
+files:
+  - source: myapp
+    destination: /myapp
+hooks:
+  BeforeInstall:
+    - location: codedeploy/before-install
+#  AfterInstall:
+#    - location: Scripts/RunResourceTests.sh
+#      timeout: 180
+#  ApplicationStart:
+#    - location: Scripts/RunFunctionalTests.sh
+#      timeout: 3600
+#  ValidateService:
+#    - location: Scripts/MonitorService.sh
+#      timeout: 3600
+#      runas: codedeployuser

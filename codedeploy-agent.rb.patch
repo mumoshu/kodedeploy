@@ -1,0 +1,19 @@
+--- /aws-codedeploy-agent/lib/codedeploy-agent.rb	2018-10-24 03:05:04.000000000 +0000
++++ /usr/local/bundle/gems/aws_codedeploy_agent-0.1/lib/codedeploy-agent.rb	2018-10-24 03:29:54.883486714 +0000
+@@ -39,8 +39,16 @@ flag [:config_file,:config_file]
+
+ desc 'start the AWS CodeDeploy agent'
+ command :start do |c|
++  c.desc "run the agent in foreground"
++  c.switch :foreground
+   c.action do |global_options,options,args|
+-    InstanceAgent::Runner::Master.start
++    p global_options, options, args
++    if options[:foreground]
++      master = InstanceAgent::Runner::Master.new
++    else
++      master = InstanceAgent::Runner::Master
++    end
++    master.start
+   end
+ end

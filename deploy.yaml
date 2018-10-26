@@ -1,0 +1,85 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    run: aws-codedeploy-agent
+  name: aws-codedeploy-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: aws-codedeploy-agent
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        run: aws-codedeploy-agent
+    spec:
+      containers:
+      - image: mumoshu/aws-codedeploy-agent:canary
+        name: aws-codedeploy-agent
+        resources: {}
+        env:
+          - name: DOCKER_HOST
+            value: tcp://localhost:2375
+        volumeMounts:
+        - name: etc-codedeploy-agent-conf
+          mountPath: /etc/codedeploy-agent/conf
+        - name: opt-codedeploy-agent-conf
+          mountPath: /opt/codedeploy-agent/conf
+        - name: var-log-aws-codedeploy-agent
+          mountPath: /var/log/aws/codedeploy-agent
+        # shared with the `dind-daemon` container, so that `docker run -v /opt/codedeploy-agent/deployment-root/${id}` just works
+        - name: deployment-root
+          mountPath: /opt/codedeploy-agent/deployment-root/
+      - name: agent
+        image: busybox
+        command:
+        - /bin/sh
+        - -c
+        - tail -F /var/log/aws/codedeploy-agent/codedeploy-agent.log
+        volumeMounts:
+        - name: var-log-aws-codedeploy-agent
+          mountPath: /var/log/aws/codedeploy-agent
+      - name: deployments
+        image: busybox
+        command:
+        - /bin/sh
+        - -c
+        - tail -F /opt/codedeploy-agent/deployment-root/deployment-logs/codedeploy-agent-deployments.log
+        volumeMounts:
+        - name: deployment-root
+          mountPath: /opt/codedeploy-agent/deployment-root/
+      - name: dind-daemon
+        image: docker:1.12.6-dind
+        resources:
+            requests:
+                cpu: 20m
+                memory: 512Mi
+        securityContext:
+            privileged: true
+        volumeMounts:
+          - name: docker-graph-storage
+            mountPath: /var/lib/docker
+          # shared with the `aws-codedeploy-agent` container, so that `docker run -v /opt/codedeploy-agent/deployment-root/${id}` just works
+          - name: deployment-root
+            mountPath: /opt/codedeploy-agent/deployment-root/
+      volumes:
+      - name: deployment-root
+        emptyDir: {}
+      - name: docker-graph-storage
+        emptyDir: {}
+      - name: var-log-aws-codedeploy-agent
+        emptyDir: {}
+      # created by e.g. `kubectl create secret generic --from-file=etc-codedeploy-agent-conf etc-codedeploy-agent-conf`
+      # it should contain codedeploy.onpremises.yml which usually contain credentials, hence a secret is used
+      - name: etc-codedeploy-agent-conf
+        secret:
+          secretName: etc-codedeploy-agent-conf
+      # created by e.g. `kubectl create secret generic --from-file=opt-codedeploy-agent-conf opt-codedeploy-agent-conf`
+      # it should contain codedeployagent.yml which doesn't usually contain credentials, hence a configmap is used
+      - name: opt-codedeploy-agent-conf
+        configMap:
+          name: opt-codedeploy-agent-conf

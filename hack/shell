@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+container=$(docker ps| grep code | cut -d' ' -f 1)
+
+exec docker exec -it $container bash

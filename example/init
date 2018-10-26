@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+if [ ! -z "$debug" ]; then
+  set -vxe
+fi
+
+list_apps() {
+  aws deploy list-applications | jq -r .applications[]
+}
+
+app=${app?missing value. specify the name of one microservice within your ns, that is one of: $(list_apps)}
+
+dir=$(cd $(dirname $0); pwd)
+source=${dir}/source
+revision=myrev
+bundletype=zip
+key=codedeploy/${app}/${revision}.${bundletype}
+
+cd $dir
+
+cluster_name=$1
+cluster_env=$2
+cluster_ns=$3
+
+if [ -z "$cluster_name" ]; then
+  echo missing cluster_name 1>&2
+  exit 1
+fi
+
+if [ -z "$cluster_env" ]; then
+  echo missing cluster_env 1>&2
+  exit 1
+fi
+
+if [ -z "$cluster_ns" ]; then
+  echo missing cluster_ns 1>&2
+  exit 1
+fi
+
+aws deploy register \
+  --instance-name $cluster_name \
+  --iam-user-arn arn:aws:iam::80398EXAMPLE:user/CodeDeployUser-OnPrem \
+  --tags Key=clusterenv,Value=$cluster_env Key=clusterns,Value=$cluster_ns \
+  --region ap-northeast-1

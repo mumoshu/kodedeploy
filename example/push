@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+if [ ! -z "$debug" ]; then
+  set -vxe
+fi
+
+list_apps() {
+  aws deploy list-applications | jq -r .applications[]
+}
+
+app=${app?missing value. specify the name of one microservice within your ns, that is one of: $(list_apps)}
+env=${env?missing value. specify e.g. production, staging, test, preview}
+ns=${ns?missing value. specify k8s namespace = your team, product, or project name}
+dir=$(cd $(dirname $0); pwd)
+source=${dir}/source
+revision=myrev
+bundletype=zip
+key=codedeploy/${app}/${revision}.${bundletype}
+bucket=${bucket?required value}
+
+cd $dir
+
+# create the app when it doesn't exist yet
+
+aws deploy get-application --application-name $app
+code=$?
+
+if [ $code -eq 255 ]; then
+  echo creating $app...
+  if ! aws deploy create-application --application-name $app >/dev/null; then
+    echo failed creating $app 1>&2
+    exit 1
+  fi
+fi
+
+# the deployment group should have been created by the `init` script
+
+aws deploy push \
+  --application-name ${app} \
+  --description "${myrev}" \
+  --ignore-hidden-files \
+  --s3-location s3://${bucket}/${key} \
+  --source ${source}
+
+config=CodeDeployDefault.OneAtATime
+
+# ${clusterenv}_${clusterns} e.g. production-tax-operation, staging-jigsaw
+group=${env}-${ns}
+
+# Btw, the instance name could be, for example, production-k8s1-tax-operation, staging-stk8s1-jigsaw
+
+aws deploy create-deployment \
+  --application-name ${app} \
+  --deployment-config-name ${config} \
+  --deployment-group-name ${group} \
+  --s3-location bucket=${bucket},key=${key},bundleType=${bundletype}
