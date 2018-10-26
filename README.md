@@ -88,3 +88,15 @@ The codedeploy agent in your namespace detects the newly created revision, runs 
 Now that the latest revision is memorized by AWS CodeDeploy, every newly installed agent automatically fetches the latest revision for installing.
 
 You don't need to remember which namespace contains what anymore! All you need to do is install agents whenever you (re)create new clusters and namespaces. CodeDeploy takes care of the rest.
+
+## Integrations
+
+### GitHub
+
+- Create a GitHub Webhook endopoint, with [aws-lambda-go-api-proxy](https://github.com/awslabs/aws-lambda-go-api-proxy), that reacts to `GitHub Deployment` events by creating corresponding CodeDeploy deployments.
+
+- Use [remind101/deploy](https://github.com/remind101/deploy) to trigger `GitHub Deployment`s
+
+### Slack
+
+- Use [remind101/slashdeploy](https://github.com/remind101/slashdeploy) so that you can say `/deploy` in your Slack channel to trigger `GitHub Deployment`s, which then triggers CodeDeploy deployments via the lambda function created in the above `GitHub` section
