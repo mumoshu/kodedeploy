@@ -2,6 +2,16 @@
 
 Continuous deployment of your application on Kubernetes. It is continuous that your every application will be automatically redeployed whenever you create new Kubernetes clusters.
 
+## Goal
+
+You don't need to remember anymore about which namespace contains which Kubernetes resources!
+
+Whenever you (re)create new clusters and namespaces, all you need to do is install AWS CodeDeploy agents as a single-pod Kubernetes deployment, per a Kubernetes namespace.
+
+CodeDeploy takes care of the rest.
+
+## How it works
+
 If you're familiar with AWS, I'd say that it works much like Launch Configuration, for Kubernetes clusters.
 
 Your launch configuration might have been automatically creating identical EC2 instances for you according to `userdata`. KodeDeploy, on the other hand, redeploys every k8s app needed for your k8s cluster.
@@ -80,23 +90,47 @@ And repeat these steps for each `kodedeployns` within your cluster in the enviro
 Run the following command to create a revision from your local source, and then deploy it:
 
 ```console
-example/push
+aws deploy push \
+  --application-name ${app} \
+  --description "${myrev}" \
+  --ignore-hidden-files \
+  --s3-location s3://${bucket}/${key} \
+  --source ${source}
 ```
 
-The codedeploy agent in your namespace detects the newly created revision, runs commands provided in the `appspec.yml` included in the source.
+```console
+aws deploy create-deployment \
+  --application-name ${app} \
+  --deployment-config-name CodeDeployDefault.OneAtATime \
+  --deployment-group-name ${group} \
+  --s3-location bucket=${bucket},key=${key},bundleType=${bundletype}
+```
 
-Now that the latest revision is memorized by AWS CodeDeploy, every newly installed agent automatically fetches the latest revision for installing.
+I'd suggest the following naming conventions for the variables:
 
-You don't need to remember which namespace contains what anymore! All you need to do is install agents whenever you (re)create new clusters and namespaces. CodeDeploy takes care of the rest.
+`app`: the name of one microservice within your namespace. Note that each namespace could contain one more more microservices.
+`env`: the name of the environnment which the agent is intended to manage e.g. `production`, `staging`, `test`, `preview`.
+`ns`: the name of the Kubernetes namespace which the agent is intended to manage, recommended to be either your team's name or product name.
+`group`: `${env}-${nv}`
+
+Now Wait for a few seconds to see the agent deploys your Kubernetes resources.
+
+The codedeploy agent in your namespace detects the newly created AWS CodeDeploy `revision`, runs commands provided in the AWS CodeDeploy `appspec.yml` included in the source.
+
+Now that the latest `revision` is memorized by AWS CodeDeploy, every newly installed agent automatically fetches the latest revision for installing.
 
 ## Integrations
 
 ### GitHub
+
+See the progresses of your deplyoments in GitHub pull requests.
 
 - Create a GitHub Webhook endopoint, with [aws-lambda-go-api-proxy](https://github.com/awslabs/aws-lambda-go-api-proxy), that reacts to `GitHub Deployment` events by creating corresponding CodeDeploy deployments.
 
 - Use [remind101/deploy](https://github.com/remind101/deploy) to trigger `GitHub Deployment`s
 
 ### Slack
+
+Trigger deployments via Slack.
 
 - Use [remind101/slashdeploy](https://github.com/remind101/slashdeploy) so that you can say `/deploy` in your Slack channel to trigger `GitHub Deployment`s, which then triggers CodeDeploy deployments via the lambda function created in the above `GitHub` section
