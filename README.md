@@ -114,7 +114,7 @@ I'd suggest the following naming conventions for the variables:
 
 `ns`: the name of the Kubernetes namespace which the agent is intended to manage, recommended to be either your team's name or product name.
 
-`group`: `${env}-${nv}`
+`group`: `${env}-${ns}`
 
 Now Wait for a few seconds to see the agent deploys your Kubernetes resources.
 
