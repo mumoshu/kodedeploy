@@ -2,11 +2,15 @@
 
 Continuous deployment of your application on Kubernetes. It is continuous that all the Kubernetes applications will be automatically redeployed, whenever you create new Kubernetes clusters.
 
-## Goal
+## Why we need it
 
-As an infrastructure engineer and/or a ClusterOps person, whenever you (re)create new clusters and namespaces, all you need to do is install an AWS CodeDeploy agent per a Kubernetes namespace.
+As an infrastructure engineer and/or a ClusterOps person, whenever I create a new cluster, I want my cluster to deploy everything needed automatically, without requiring me to run a bunch of commands.
 
-CodeDeploy takes care of the rest, fetfching the desired state of the namespace, automatically deploying everything, for you.
+## What we get from KodeDeploy
+
+All you have to in order to setup the new Kubernetes cluster is now installing an agent per a Kubernetes namespace.
+
+AWS CodeDeploy and the KodeDeploy agent, derived from codedeploy-agent, takes care of the rest, fetching the desired state of the cluster, automatically deploying everything, for you.
 
 This is especially helpful in the two use-cases below:
 
@@ -39,7 +43,7 @@ Your launch configuration might have been automatically creating identical EC2 i
 
 With KodeDeploy, all you need to do for recreating your Kubernetes cluster becomes just two steps. The first step is provisioning a "raw" cluster with a tool like eksctl, kops, or kube-aws. The second and the final step is deploying `KodeDeploy`, providing `Environment Name` like `production` and `Namespace` like `my-accounting-product` or `my-analytics-platform`, onto your cluster. KodeDeploy remembers which k8s apps is needed for the cluster in e.g. the `my-analytics-platform` namespace within the `production` environment, so that it can deploy everything for you.
 
-KodeDeploy, as you might have guessed from its name, exploits AWS CodeDeploy for Kubernetes.
+KodeDeploy, as you might have guessed from its name, exploits AWS CodeDeploy for Kubernetes. If you know much about CodeDeploy, the core idea of KodeDeploy is treat each CodeDeploy on-premise machine as one Kubernetes namespace in a cluster. So that a CodeDeploy deployment, formerly considered as a series of commands that is uniformely run against each machine in a deployment group, is now run against each targeted namespace in all the clusters in a targeted environment. That is, it's like KodeDeploy running your deployment in all the `myplatform` namespaces in all the `production` clusters. This is done no matter how many clusters you have in the `production` environment, hence you are freed from repeating deployments for all the clusters.
 
 ## Getting Started
 
