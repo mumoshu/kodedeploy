@@ -23,9 +23,13 @@ Any developers in the project team, as long as they're allowed by AWS IAM polici
 
 ### Easy Kubernetes cluster migration
 
-Run multiple versions of Kubernetes clusters for smooth migration. Let's vary the version number of Kubernetes, like `v1.10.7` or `v.1.11.3`, connecting to the same Target Group, for canary deployments of Kubernetes clusters.
+KodeDeploy allows you to easily to a kind of canary deployments of Kubernetes clusters. Run multiple flavors of Kubernetes clusters for smooth migration without headache of (re)deploying apps.
 
-Usually doing things like this requires you to repeat `kubectl` or `helm` or something similar per Kubernetes cluster when you have multiple of them. With KodeDeploy, all you need is installing CodeDeploy agents. Each agent knows which revision of your apps should be installed in a namespace, so that it can deploy it for you.
+Usually doing things like this requires you to repeat `kubectl` or `helm` or something similar per Kubernetes cluster when you have multiple of them.
+
+With KodeDeploy, all you need is installing CodeDeploy agents. Each agent knows which revision of your apps should be installed in a namespace, so that it can deploy it for you.
+
+One standard use-case of KodeDeploy is easing Kubernetes version upgrades in your production environment. Vary the version number of Kubernetes across clusters, like `v1.10.7` or `v.1.11.3`, connecting to the same Target Group, tweaking sizes Auto Scaling Groups of your Kubernetes nodes across clustesr to for load-balancing across clusters.
 
 ## How it works
 
