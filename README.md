@@ -119,6 +119,8 @@ The codedeploy agent in your namespace detects the newly created AWS CodeDeploy 
 
 Now that the latest `revision` is memorized by AWS CodeDeploy, every newly installed agent automatically fetches the latest revision for installing.
 
+See `example/push` to see how you could automate the most of these steps and conventions for you.
+
 ## Integrations
 
 ### GitHub
