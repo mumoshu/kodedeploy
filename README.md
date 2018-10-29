@@ -85,6 +85,44 @@ kubectl --namespace ${kodedeployns} \
 
 And repeat these steps for each `kodedeployns` within your cluster in the environment.
 
+### Author `appspec.yml`
+
+`appspec.yml` is a kind of your deployment script that is run by CodeDeploy agents.
+
+Being locked-in to Kubernetes for this specific use-case, we have less things to do here compared to traditinoal `appspec.yml` files.
+
+Suppose you have all the files required to deploy your app onto Kubernetes under `./myapp`, always start with a `appspec.yml` like the below:
+
+```yaml
+version: 0.0
+os: linux
+files:
+  - source: deploy
+    destination: /deploy
+hooks:
+  AfterInstall:
+  - location: codedeploy/after-install.sh
+    timeout: 180
+```
+
+Whereas the `after-install.sh` looks like:
+
+```yaml
+#!/usr/bin/env bash
+
+set -vx
+
+wd="/opt/codedeploy-agent/deployment-root/${DEPLOYMENT_GROUP_ID}/${DEPLOYMENT_ID}/deployment-archive"
+image="quay.io/roboll/helmfile:v0.40.1"
+cmd="helmfile apply"
+
+docker run -v "${wd}:${wd}" --rm "${image}" -w "${wd}" bash -c "${cmd}"
+```
+
+Edit the above `appspec.yml` to use whatever `image` and `cmd` you like, so that any tool that speaks to Kubernetes can be integrated with AWS CodeDeploy.
+
+In case you'd want to understand how this works, `DEPLOYMENT_GROUP_ID` is a variable provided by CodeDeploy, containing the ID of the deployment group in which the current deployment is.
+
 ### Deploying revisions
 
 Run the following command to create a revision from your local source, and then deploy it:
