@@ -126,6 +126,13 @@ See `example/push` to see how you could automate the most of these steps and con
 
 ## Integrations
 
+### Helmfile
+
+Have one desired-state file for your whole namespace, that is applied automatically
+
+- Write your desired state file called `helmfile.yaml` per namespace using [roboll/helmfile](https://github.com/roboll/helmfile)
+- Modify your AWS CodeDeploy `appspec.yml` to call the `helmfile apply` command
+
 ### GitHub
 
 See the progresses of your deplyoments in GitHub pull requests.
