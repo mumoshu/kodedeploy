@@ -109,8 +109,11 @@ aws deploy create-deployment \
 I'd suggest the following naming conventions for the variables:
 
 `app`: the name of one microservice within your namespace. Note that each namespace could contain one more more microservices.
+
 `env`: the name of the environnment which the agent is intended to manage e.g. `production`, `staging`, `test`, `preview`.
+
 `ns`: the name of the Kubernetes namespace which the agent is intended to manage, recommended to be either your team's name or product name.
+
 `group`: `${env}-${nv}`
 
 Now Wait for a few seconds to see the agent deploys your Kubernetes resources.
