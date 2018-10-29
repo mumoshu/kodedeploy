@@ -1,14 +1,31 @@
 # KodeDeploy
 
-Continuous deployment of your application on Kubernetes. It is continuous that your every application will be automatically redeployed whenever you create new Kubernetes clusters.
+Continuous deployment of your application on Kubernetes. It is continuous that all the Kubernetes applications will be automatically redeployed, whenever you create new Kubernetes clusters.
 
 ## Goal
 
-You don't need to remember anymore about which namespace contains which Kubernetes resources!
+As an infrastructure engineer and/or a ClusterOps person, whenever you (re)create new clusters and namespaces, all you need to do is install an AWS CodeDeploy agent per a Kubernetes namespace.
 
-Whenever you (re)create new clusters and namespaces, all you need to do is install AWS CodeDeploy agents as a single-pod Kubernetes deployment, per a Kubernetes namespace.
+CodeDeploy takes care of the rest, fetfching the desired state of the namespace, automatically deploying everything, for you.
 
-CodeDeploy takes care of the rest.
+This is especially helpful in the two use-cases below:
+
+- Delegate continuous (re)deployment of apps to your product teams
+- Easy Kubernetes cluster migration
+
+### Delegate continuous (re)deployment of apps to your product teams
+
+You don't need to remember which namespace contains which Kubernetes resources!
+
+Aa a ClusterOps person, whenever a new project starts, you just create a dedicated Kubernetes namespace, installing a CodeDeploy agent. Finally give IAM role accesses for all the developers in the project team, and you're done.
+
+Any developers in the project team, as long as they're allowed by AWS IAM policies, can deploy your Kubernetes applications with CodeDeploy from anywhere.
+
+### Easy Kubernetes cluster migration
+
+Run multiple versions of Kubernetes clusters for smooth migration. Let's vary the version number of Kubernetes, like `v1.10.7` or `v.1.11.3`, connecting to the same Target Group, for canary deployments of Kubernetes clusters.
+
+Usually doing things like this requires you to repeat `kubectl` or `helm` or something similar per Kubernetes cluster when you have multiple of them. With KodeDeploy, all you need is installing CodeDeploy agents. Each agent knows which revision of your apps should be installed in a namespace, so that it can deploy it for you.
 
 ## How it works
 
