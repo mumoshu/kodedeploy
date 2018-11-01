@@ -50,10 +50,35 @@ KodeDeploy, as you might have guessed from its name, exploits AWS CodeDeploy for
 ### Installing agents
 
 ```console
-aws deploy register \
+$ aws deploy register \
   --instance-name ${instance_name} \
   --tags Key=kodedeployenv,Value=production Key=kodedeploycluster,Value=examplecom Key=kodedeployns,Value=my-analytics-platform \
   --region us-west-2
+```
+
+Expect log messages like the below if you've successfully registered the instance:
+
+```console
+Creating the IAM user... DONE
+IamUserArn: arn:aws:iam::YOUR_AWS_ACCOUNT:user/AWS/CodeDeploy/YOUR_INSTANCE_NAME
+Creating the IAM user access key... DONE
+AccessKeyId: YOUR_AUT_GENERATED_KEY_ID
+SecretAccessKey: YOUR_AUTO_GENERATED_SECRET_KEY
+Creating the IAM user policy... DONE
+PolicyName: codedeploy-agent
+PolicyDocument: {
+    "Version": "2012-10-17",
+    "Statement": [ {
+        "Action": [ "s3:Get*", "s3:List*" ],
+        "Effect": "Allow",
+        "Resource": "*"
+    } ]
+}
+Creating the on-premises instance configuration file named codedeploy.onpremises.yml...DONE
+Registering the on-premises instance... DONE
+Adding tags to the on-premises instance... DONE
+Copy the on-premises configuration file named codedeploy.onpremises.yml to the on-premises instance, and run the following command on the on-premises instance to install and configure the AWS CodeDeploy Agent:
+aws deploy install --config-file codedeploy.onpremises.yml
 ```
 
 The `instance_name` should be `${env}-${cluster}-${ns}` whereas each component is:
