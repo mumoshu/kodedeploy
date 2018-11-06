@@ -45,6 +45,10 @@ With KodeDeploy, all you need to do for recreating your Kubernetes cluster becom
 
 KodeDeploy, as you might have guessed from its name, exploits AWS CodeDeploy for Kubernetes. If you know much about CodeDeploy, the core idea of KodeDeploy is treat each CodeDeploy on-premise machine as one Kubernetes namespace in a cluster. So that a CodeDeploy deployment, formerly considered as a series of commands that is uniformely run against each machine in a deployment group, is now run against each targeted namespace in all the clusters in a targeted environment. That is, it's like KodeDeploy running your deployment in all the `myplatform` namespaces in all the `production` clusters. This is done no matter how many clusters you have in the `production` environment, hence you are freed from repeating deployments for all the clusters.
 
+## Implementation
+
+KodeDeploy is just a set of helper scripts and a Kubernetes manifest to deploy CodeDeploy Agent along with a Docker daemon as a sidecar.
+
 ## Getting Started
 
 ### Installing agents
@@ -164,9 +168,13 @@ set -vx
 
 wd="/opt/codedeploy-agent/deployment-root/${DEPLOYMENT_GROUP_ID}/${DEPLOYMENT_ID}/deployment-archive"
 image="quay.io/roboll/helmfile:v0.40.1"
+
+# To use kodedeploy pod's serviceaccount to access Kubernetes API
+sd="/var/run/secrets/kubernetes.io/serviceaccount/"
+
 cmd="helmfile apply"
 
-docker run -v "${wd}:${wd}" --rm "${image}" -w "${wd}" bash -c "${cmd}"
+docker run -v "${wd}:${wd}" -v "${sd}:${sd}" --rm "${image}" -w "${wd}" bash -c "${cmd}"
 ```
 
 Edit the above `appspec.yml` to use whatever `image` and `cmd` you like, so that any tool that speaks to Kubernetes can be integrated with AWS CodeDeploy.
