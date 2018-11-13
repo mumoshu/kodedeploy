@@ -183,6 +183,12 @@ In case you'd want to understand how this works, `DEPLOYMENT_GROUP_ID` is a vari
 
 ### Deploying revisions
 
+Firstly, create an CodeDeploy application that hosts that is required to associate deployment groups and deployment to:
+
+```console
+aws deploy create-application --application-name ${app}
+```
+
 Run the following command to create a revision from your local source, and then deploy it:
 
 ```console
