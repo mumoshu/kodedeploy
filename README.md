@@ -51,6 +51,19 @@ KodeDeploy is just a set of helper scripts and a Kubernetes manifest to deploy C
 
 ## Getting Started
 
+### Setup the runtime environment for agents
+
+You should create a Kubernetes namespace and a deployment for `kodedeploy` agent. Each pod should have an IAM role to make codedeploy-agent to work properly.
+
+Assming you have `kiam` installed in the `kube-system` namespace, the following steps result in creating the `kodedeploy` namespace with all the IAM roles permitted.
+
+It also creates a Kubernetes deployment that creates a `kodedeploy-agent` pod that requests an IAM role named `kodedeploy-agent`. You should give CodeDeploy-related IAM permissions to the role before you proceed with actual testing.
+
+```console
+$ kubectl apply -f namespace.yaml
+$ kubectl apply -f deploy.yaml
+```
+
 ### Installing agents
 
 ```console

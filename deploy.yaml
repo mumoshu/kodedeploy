@@ -5,6 +5,7 @@ metadata:
   labels:
     run: aws-codedeploy-agent
   name: aws-codedeploy-agent
+  namespace: kodedeploy
 spec:
   replicas: 1
   selector:
@@ -16,6 +17,8 @@ spec:
       creationTimestamp: null
       labels:
         run: aws-codedeploy-agent
+      annotations:
+        iam.amazonaws.com/role: kodedeploy-agent
     spec:
       containers:
       - image: mumoshu/aws-codedeploy-agent:canary

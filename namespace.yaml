@@ -1,0 +1,5 @@
+kind: Namespace
+metadata:
+  name: kodedeploy
+  annotations:
+    iam.amazonaws.com/permitted: ".*"
