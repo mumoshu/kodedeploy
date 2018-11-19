@@ -37,6 +37,12 @@ RUN \
   curl -L https://download.docker.com/linux/static/stable/x86_64/docker-18.06.1-ce.tgz | tar zxv && \
   find docker
 
+FROM golang:1.11 AS cloudwatch-logger
+
+RUN go get -u github.com/zendesk/cloudwatch-logger
+
+RUN bash -c 'cloudwatch-logger; code=$?; if [ $code -ne 1 ]; then echo unexpected code: $code 1>&2; exit 1; fi'
+
 FROM ubuntu:16.04 AS runner
 
 LABEL maintainer "Yusuke KUOKA <ykuoka@gmail.com>"
@@ -67,6 +73,8 @@ RUN \
   mkdir -p /etc/codedeploy-agent/conf/
 
 COPY --from=builder /aws-codedeploy-agent/certs/host-agent-deployment-signer-ca-chain.pem $GEMS_DIR/aws_codedeploy_agent-0.1/certs/host-agent-deployment-signer-ca-chain.pem
+
+COPY --from=cloudwatch-logger /go/bin/cloudwatch-logger /usr/bin/cloudwatch-logger
 
 # Instead of running:
 #   aws deploy install --override-config --config-file ONPREM_CONFIG
