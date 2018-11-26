@@ -187,7 +187,13 @@ sd="/var/run/secrets/kubernetes.io/serviceaccount/"
 
 cmd="helmfile apply"
 
-docker run -v "${wd}:${wd}" -v "${sd}:${sd}" --rm -w "${wd}" "${image}" bash -c "${cmd}"
+docker run -v "${wd}:${wd}" -v "${sd}:${sd}" \
+    -e "KUBERNETES_SERVICE_HOST=${KUBERNETES_SERVICE_HOST}" \
+    -e "KUBERNETES_SERVICE_PORT=${KUBERNETES_SERVICE_PORT}" \
+    -e "KUBE_DNS_SERVICE_HOST=${KUBE_DNS_SERVICE_HOST}" \
+    -e "KUBE_DNS_SERVICE_PORT=${KUBE_DNS_SERVICE_PORT}" \
+    --rm -w "${wd}" \
+    "${image}" bash -c "${cmd}"
 ```
 
 Edit the above `appspec.yml` to use whatever `image` and `cmd` you like, so that any tool that speaks to Kubernetes can be integrated with AWS CodeDeploy.
