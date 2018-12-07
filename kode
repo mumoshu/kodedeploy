@@ -1,6 +1,30 @@
 #!/usr/bin/env variant-alpha
 
 tasks:
+  deregister:
+    parameters:
+    - name: namespace
+      type: string
+      default: ""
+    - name: environment
+      type: string
+    - name: cluster
+      type: string
+      description: "the name of the cluster to deploy the thing. basically use for one-off jobs"
+      default: ""
+    script: |
+      user="{{ get "environment" }}-{{ get "namespace" }}-{{ get "cluster" }}"
+
+      # Avoid the `An error occurred (DeleteConflict) when calling the DeleteUser operation: Cannot delete entity, must delete policies first.` error
+      aws iam list-user-policies --user-name "${user}"
+      aws iam delete-user-policy --user-name "${user}" --policy-name codedeploy-agent
+
+      # Avoid the `An error occurred (DeleteConflict) when calling the DeleteUser operation: Cannot delete entity, must delete access keys first.` error
+      key_id=$(aws iam list-access-keys --user-name "${user}" | jq -r '.AccessKeyMetadata[].AccessKeyId')
+      aws iam delete-access-key --user-name "${user}" --access-key-id "${key_id}"
+
+      aws deploy deregister-on-premises-instance --instance-name "${user}"
+      aws iam delete-user --user-name "${user}"
   logs:
     parameters:
     - name: application
@@ -17,6 +41,12 @@ tasks:
       default: ""
     script: |
       app={{ get "application" }}
+      env={{ get "environment" }}
+      ns={{ get "namespace" }}
+
+      if [ "${app}" == "" ]; then
+        app=${ns}
+      fi
 
       codedeploy="kodedeploy-env-${env}-ns-${ns}-app-${app}"
       
@@ -27,12 +57,12 @@ tasks:
         group="${group}-cluster-${cluster}"
       fi
       
-      deploy_group_id=$(aws deploy get-deployment-group --deployment-gorup-name $group --application $app | tee /dev/stderr | jq .DeploymentGroup.Id)
-      deploy_id=$(aws deploy get-deployment --deployment-gorup-name $group --application $app | tee /dev/stderr | jq .Deployment.Id)
+      deploy_group_id=$(aws deploy get-deployment-group --deployment-group-name $group --application $app | tee /dev/stderr | jq .DeploymentGroup.Id)
+      deploy_id=$(aws deploy get-deployment --deployment-group-name $group --application $app | tee /dev/stderr | jq .Deployment.Id)
       
       cw tail --stream-name --follow kodedeploy/deploys/"${group}" "${deploy_id}"/\*
 
-  register:
+  init:
     parameters:
     - name: namespace
       type: string
@@ -44,7 +74,7 @@ tasks:
       description: "the name of the cluster to deploy the thing. basically use for one-off jobs"
     script: |
       if ! kubectl version >/dev/null; then
-        echo '`kodedeploy register` requires an valid k8s api access` 1>&2
+        echo '`kodedeploy register` requires an valid k8s api access`' 1>&2
         exit 1
       fi
       
@@ -52,23 +82,31 @@ tasks:
       env={{ get "environment" }}
       cluster={{ get "cluster" }}
 
-      dir=somedir
+      env=${env?missing value. specify e.g. production, staging, test, preview}
+      ns=${ns?missing value. specify k8s namespace = your team, product, or project name}
+      cluster=${cluster?missing value. specify cluster}
+      
+      # this equals to the iam user name
+      instance_name="${env}-${ns}-${cluster}"
 
       aws deploy register \
         --instance-name ${instance_name} \
         --tags Key=kodedeployenv,Value={{ get "environment" }} Key=kodedeploycluster,\
       Value={{ get "cluster" }} Key=kodedeployns,Value={{ get "namespace" }}
 
+      dir=.awscodectl/tmp/${instance_name}/etc-codedeploy-agent-conf
+      #rm -rf ${dir}
       mkdir -p "${dir}"
+
       mv codedeploy.onpremises.yml "${dir}/"
 
-      kubectl --namespace ${ns} \
-        create secret generic --from-file=somedir etc-codedeploy-agent-conf
-      
-      rm -rf ${dir}
-      
-      anotherdir=anotherdir
+      kubectl create namespace ${ns}
 
+      kubectl --namespace ${ns} \
+        create secret generic --from-file=${dir} $(basename $dir)
+
+      anotherdir=.awscodectl/tmp/${instance_name}/opt-codedeploy-agent-conf
+      #rm -rf ${anotherdir}
       mkdir -p "${anotherdir}"
 
       cat <<EOS > "${anotherdir}/codedeployagent.yml"
@@ -85,31 +123,31 @@ tasks:
       EOS
 
       kubectl --namespace ${ns} \
-        create configmap --from-file="${anotherdir}" opt-codedeploy-agent-conf
+        create configmap --from-file="${anotherdir}" $(basename $anotherdir)
       
-      rm -rf ${anotherdir}
-
       keyid=$(cat ${dir}/codedeploy.onpremises.yml | grep aws_access_key_id | cut -f2 -d' ')
-      secretkey=$(cat ${dir}codedeploy.onpremises.yml | grep aws_secret_access_key | cut -f2 -d' ')
+      secretkey=$(cat ${dir}/codedeploy.onpremises.yml | grep aws_secret_access_key | cut -f2 -d' ')
 
-      awsdir=cloud-watch-agent-aws
-
+      awsdir=.awscodectl/tmp/${instance_name}/cloudwatch-agent-aws
+      #rm -rf ${awsdir}
       mkdir -p "${awsdir}"
       
       cat <<EOS > ${awsdir}/credentials
       [AmazonCloudWatchAgent]
       aws_access_key_id = $keyid
-      aws_secret_access_key = $accesskey
+      aws_secret_access_key = $secretkey
+      region=ap-northeast-1
+      
+      [awscloudwatchagent]
+      aws_access_key_id = $keyid
+      aws_secret_access_key = $secretkey
       region=ap-northeast-1
       EOS
 
       kubectl --namespace ${ns} \
-        create configmap --from-file="${awsdir}" cloud-watch-agent-aws
+        create secret generic --from-file="${awsdir}" $(basename $awsdir)
 
-      rm -rf ${awsdir}
-
-      cwconfdir=cloud-watch-agent-conf
-
+      cwconfdir=.awscodectl/tmp/${instance_name}/cloudwatch-agent-conf
       mkdir -p "${cwconfdir}"
       
       # See https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Agent-Configuration-File-Details.html
@@ -136,11 +174,51 @@ tasks:
       EOS
 
       kubectl --namespace ${ns} \
-        create configmap --from-file="${cwconfdir}" cloud-watch-agent-conf
+        create configmap --from-file="${cwconfdir}" $(basename $cwconfdir)
 
-      rm -rf ${cwconfdir}
+      #rm -rf ${cwconfdir}
 
-  apply:
+      kubectl --namespace ${ns} apply -f deploy.yaml
+
+      kubectl get secret,configmap,pod -n ${ns}
+  
+  run:
+    parameters:
+    - name: namespace
+      type: string
+      default: ""
+    - name: environment
+      type: string
+    - name: command
+      type: string
+    - name: application
+      default: ""
+    - name: directory
+      default: ""
+    - name: bucket
+      type: string
+    - name: image
+      type: string
+      default: "quay.io/roboll/helmfile:v0.40.1"
+    script: |
+      clusters=$(get all clusters)
+
+      for c in $clusters; do
+        echo cluster: $c
+        cluster=$c
+        break
+      done
+
+      ./awscodectl deploy \
+        --namespace {{ get "namespace" }} \
+        --environment {{ get "environment" }} \
+        --application "{{ get "application" }}" \
+        --directory "{{ get "directory" }}" \
+        --bucket "{{ get "bucket" }}" \
+        --image "{{ get "image" }}" \
+        --cluster "$cluster"
+
+  deploy:
     parameters:
     - name: namespace
       type: string
@@ -192,27 +270,31 @@ tasks:
       mkdir -p "${source}"
       cd "${source}"
 
+      before_install=before-install.sh
+      after_install=after-install.sh
+
       cat <<EOS > appspec.yml
       version: 0.0
       os: linux
-      files:
-        - source: deploy
-          destination: /deploy
+      #files:
+      #  - source: deploy
+      #    destination: /deploy
       hooks:
         BeforeInstall:
-        - location: codedeploy/before-install.sh
+        - location: ${before_install}
           timeout: 180
         AfterInstall:
-        - location: codedeploy/after-install.sh
+        - location: ${after_install}
           timeout: 180
       EOS
 
-      cat <<EOS > before-install.sh
+      cat <<EOS > "${before_install}"
       #!/usr/bin/env bash
-      rm -rf /deploy
+      #rm -rf /deploy
+      echo before install
       EOS
 
-      cat <<'EOS' > after-install.sh
+      cat <<'EOS' > "${after_install}"
       #!/usr/bin/env bash
       set -vx
       wd="${WORK_DIR:-/opt/codedeploy-agent/deployment-root/${DEPLOYMENT_GROUP_ID}/${DEPLOYMENT_ID}/deployment-archive}"
@@ -225,7 +307,8 @@ tasks:
 
       exec 2> >(sed "s/^/err/" | cloudwatch-logger -t "${log_group}" ${DEPLOYMENT_ID}/stderr)
 
-      docker run -v "${wd}:${wd}" -v "${sd}:${sd}" --rm -w "${wd}" "${image}" bash -c "${cmd}" | cloudwatch-logger -t "${log_group}" ${DEPLOYMENT_ID/stdout}
+      docker run -v "${wd}:${wd}" -v "${sd}:${sd}" --rm -w "${wd}" "${image}" bash -c "${cmd}"
+      # | cloudwatch-logger -t "${log_group}" ${DEPLOYMENT_ID/stdout}
       EOS
 
       cat <<EOS > helmfile.yaml
@@ -234,7 +317,7 @@ tasks:
         chart: stable/nginx
       EOS
 
-      chmod +x before-install.sh after-install.sh
+      chmod +x ${before_install} ${after_install}
 
       cd -
 
@@ -272,7 +355,8 @@ tasks:
         --s3-location s3://${bucket}/${key} \
         --source ${source}
       
-      config=CodeDeployDefault.OneAtATime
+      #config=CodeDeployDefault.OneAtATime
+      config=CodeDeployDefault.AllAtOnce
 
       # TODO better name
       role=kodedeploy
@@ -315,7 +399,7 @@ tasks:
           --application-name $app \
           --deployment-group-name "${group}" \
           --service-role-arn "${service_role_arn}" \
-          --on-premises-instance-tag-filters Key=kodedeployenv,Value=${env},Type=KEY_AND_VALUE Key=kodedeploycluster,Value=${cluster},Type=KEY_AND_VALUE Key=kodedeployns,Value=${namespace},Type=KEY_AND_VALUE
+          --on-premises-tag-set '{"onPremisesTagSetList":[[{"Key":"kodedeployenv","Value":"'${env}'","Type":"KEY_AND_VALUE"}], [{"Key":"kodedeploycluster","Value":"'${cluster}'","Type":"KEY_AND_VALUE"}], [{"Key":"kodedeployns","Value":"'${ns}'","Type":"KEY_AND_VALUE"}]]}' \
           >/dev/null
         if [ $? -ne 0 ]; then
           echo "failed creating \"${group}\"" 1>&2

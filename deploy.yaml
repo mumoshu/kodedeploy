@@ -5,7 +5,6 @@ metadata:
   labels:
     run: aws-codedeploy-agent
   name: aws-codedeploy-agent
-  namespace: kodedeploy
 spec:
   replicas: 1
   selector:
@@ -69,12 +68,13 @@ spec:
           # shared with the `aws-codedeploy-agent` container, so that `docker run -v /opt/codedeploy-agent/deployment-root/${id}` just works
           - name: deployment-root
             mountPath: /opt/codedeploy-agent/deployment-root/
-      - name: cloud-watch-agent
-        image: mumoshu/aws-codedeploy-agent:cloud-watch-agent-canary
+      - name: cloudwatch-agent
+        image: mumoshu/aws-codedeploy-agent:cloudwatch-agent-canary
         volumeMounts:
-        - name: cloud-watch-agent-aws
-          mountPath: /root/.credentials
-        - name: cloud-watch-agent-conf
+        - name: cloudwatch-agent-aws
+          mountPath: /root/.aws/credentials
+          subPath: credentials
+        - name: cloudwatch-agent-conf
           mountPath: /etc/aws/amazon-cloudwatch-agent
       volumes:
       - name: deployment-root
@@ -93,9 +93,9 @@ spec:
       - name: opt-codedeploy-agent-conf
         configMap:
           name: opt-codedeploy-agent-conf
-      - name: cloud-watch-agent-aws
+      - name: cloudwatch-agent-aws
         secret:
-          secretName: cloud-watch-agent-aws
-      - name: cloud-watch-agent-conf
+          secretName: cloudwatch-agent-aws
+      - name: cloudwatch-agent-conf
         configMap:
-          name: cloud-watch-agent-conf
+          name: cloudwatch-agent-conf
