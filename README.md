@@ -35,6 +35,16 @@ With KodeDeploy, all you need is installing CodeDeploy agents. Each agent knows 
 
 One standard use-case of KodeDeploy is easing Kubernetes version upgrades in your production environment. Vary the version number of Kubernetes across clusters, like `v1.10.7` or `v.1.11.3`, connecting to the same Target Group, tweaking sizes Auto Scaling Groups of your Kubernetes nodes across clustesr to for load-balancing across clusters.
 
+## Getting started
+
+```
+$ go get -u github.com/mumoshu/variant
+
+$ git clone https://github.com/mumoshu/kodedeploy
+
+$ ./kode deploy --cluster cluster1  --environment foo --namespace ns18 --application ns18 --command "echo test" --bucket "donburi-apps-kube-aws-assets"
+```
+
 ## How it works
 
 If you're familiar with AWS, I'd say that it works much like Launch Configuration, for Kubernetes clusters.
