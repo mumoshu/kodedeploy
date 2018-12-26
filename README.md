@@ -37,6 +37,8 @@ One standard use-case of KodeDeploy is easing Kubernetes version upgrades in you
 
 ## Getting started
 
+To start managing apps in the clusters:
+
 ```
 $ go get -u github.com/mumoshu/variant
 
@@ -44,6 +46,22 @@ $ git clone https://github.com/mumoshu/kodedeploy
 
 $ ./kode deploy --cluster cluster1  --environment foo --namespace ns18 --application ns18 --command "echo test" --bucket "donburi-apps-kube-aws-assets"
 ```
+
+To start managing node in the clusters:
+
+```
+$ go get -u github.com/mumoshu/variant
+
+$ git clone https://github.com/mumoshu/kodedeploy
+
+$ aws iam create-policy --policy-name codedeploy-node --policy-document file://$(pwd)/codedeploy-node.iampolicy.json
+
+$ kubectl apply -f codedeploy-node.daemonset.yaml
+```
+
+Then, create an ALB/NLB and a target group for your app, and a deployment group that includes all the nodes in the first cluster that runs the codedeploy-node pods.
+
+A blue-green deployment can be triggered by creating a deployment that specifies an another ASG that contains all the nodes in the second cluster that runs the codedeploy-node pods.
 
 ## How it works
 
