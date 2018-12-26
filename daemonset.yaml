@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: codedeploy-node
+  labels:
+    k8s-app: codedeploy-node
+spec:
+  selector:
+    matchLabels:
+      name: codedeploy-node
+  template:
+    metadata:
+      labels:
+        name: codedeploy-node
+      annotations:
+        iam.amazonaws.com/role: kodedeploy-agent
+    spec:
+      hostNetwork: true
+      containers:
+      - image: mumoshu/aws-codedeploy-agent:canary
+        name: aws-codedeploy-agent
+        resources: {}
+        env:
+          - name: DOCKER_HOST
+            value: tcp://localhost:2375
+        volumeMounts:
+        - name: opt-codedeploy-agent-conf
+          mountPath: /opt/codedeploy-agent/conf
+        - name: var-log-aws-codedeploy-agent
+          mountPath: /var/log/aws/codedeploy-agent
+        # shared with the `dind-daemon` container, so that `docker run -v /opt/codedeploy-agent/deployment-root/${id}` just works
+        - name: deployment-root
+          mountPath: /opt/codedeploy-agent/deployment-root/
+      - name: agent
+        image: busybox
+        command:
+        - /bin/sh
+        - -c
+        - tail -F /var/log/aws/codedeploy-agent/codedeploy-agent.log
+        volumeMounts:
+        - name: var-log-aws-codedeploy-agent
+          mountPath: /var/log/aws/codedeploy-agent
+      - name: deployments
+        image: busybox
+        command:
+        - /bin/sh
+        - -c
+        - tail -F /opt/codedeploy-agent/deployment-root/deployment-logs/codedeploy-agent-deployments.log
+        volumeMounts:
+        - name: deployment-root
+          mountPath: /opt/codedeploy-agent/deployment-root/
+      - name: dind-daemon
+        image: mumoshu/aws-codedeploy-agent:dind-canary
+        resources:
+            requests:
+                cpu: 20m
+                memory: 512Mi
+        securityContext:
+            privileged: true
+        volumeMounts:
+          - name: docker-graph-storage
+            mountPath: /var/lib/docker
+          # shared with the `aws-codedeploy-agent` container, so that `docker run -v /opt/codedeploy-agent/deployment-root/${id}` just works
+          - name: deployment-root
+            mountPath: /opt/codedeploy-agent/deployment-root/
+      - name: cloudwatch-agent
+        image: mumoshu/aws-codedeploy-agent:cloudwatch-agent-canary
+        imagePullPolicy: Always
+        volumeMounts:
+        - name: cloudwatch-agent-conf
+          mountPath: /etc/aws/amazon-cloudwatch-agent
+        env:
+        - name: CLOUDWATCH_AGENT_MODE
+          value: ec2
+      volumes:
+      - name: deployment-root
+        emptyDir: {}
+      - name: docker-graph-storage
+        emptyDir: {}
+      - name: var-log-aws-codedeploy-agent
+        emptyDir: {}
+      - name: opt-codedeploy-agent-conf
+        configMap:
+          name: opt-codedeploy-agent-conf
+      - name: cloudwatch-agent-conf
+        configMap:
+          name: cloudwatch-agent-conf
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opt-codedeploy-agent-conf
+data:
+  codedeployagent.yml: |
+    :log_aws_wire: false
+    :log_dir: '/var/log/aws/codedeploy-agent/'
+    :pid_dir: '/opt/codedeploy-agent/state/.pid/'
+    :program_name: codedeploy-agent
+    :root_dir: '/opt/codedeploy-agent/deployment-root'
+    :verbose: false
+    :wait_between_runs: 1
+    :proxy_uri:
+    :max_revisions: 5
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudwatch-agent-conf
+data:
+  config.json: |
+    {
+      "logs": {
+        "logs_collected": {
+          "files": {
+            "collect_list": [
+              {
+                "file_path": "/var/log/messages",
+                "log_group_name": "messages"
+              },
+              {
+                "file_path": "/opt/codedeploy-agent/deployment-root/**/scripts.log",
+                "log_group_name": "kodedeploy/deployments",
+                "log_stream_name": "scripts"
+              }
+            ]
+          }
+        }
+      }
+    }
