@@ -44,7 +44,25 @@ $ go get -u github.com/mumoshu/variant
 
 $ git clone https://github.com/mumoshu/kodedeploy
 
-$ ./kode deploy --cluster cluster1  --environment foo --namespace ns18 --application ns18 --command "echo test" --bucket "donburi-apps-kube-aws-assets"
+$ aws iam create-role --role-name codedeploy-service --assume-role-policy-document file://$(pwd)/codedeploy-service.assumerolepolicy.json
+$ aws iam attach-role-policy --role-name codedeploy-service --policy-arn arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
+
+$ aws iam create-policy --policy-name codedeploy-namespace --policy-document file://$(pwd)/codedeploy-namespace.iampolicy.json
+$ ns_policy_arn=$(aws iam list-policies | jq -r '.Policies[] | select(.PolicyName == "codedeploy-namespace") | .Arn')
+
+# For each namespace in the all the participated clusters, run:
+
+$ ./kode init --cluster cluster1 --environment staging --namespace mycoolproduct
+
+$ aws iam attach-user-policy --user-name name_of_the_registered_onprem_instance --policy-arn $ns_policy_arn
+
+# To deploy an application only to a single cluster "cluster1", run:
+
+$ ./kode deploy --cluster cluster1  --environment staging --namespace mycoolproduct --application mymicrosvc --command "kubectl apply -n mycoolproduct apply -f deploy/kubernetes" --bucket "my-bucket-for-app-deployment-bundles"
+
+# To deploy an application to all the clusters in the environment `foo`, run:
+
+$ ./kode deploy --environment staging --namespace mycoolproduct --application mycoolproduct --command "kubectl apply -n mycoolproduct apply -f deploy/kubernetes" --bucket "my-bucket-for-app-deployment-bundles"
 ```
 
 To start managing node in the clusters:
