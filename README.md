@@ -2,7 +2,7 @@
 
 Continuous deployment of your application on Kubernetes. It is continuous that all the Kubernetes applications will be automatically redeployed, whenever you create new Kubernetes clusters.
 
-## Why we need it
+## Rationale
 
 As an infrastructure engineer and/or a ClusterOps person, whenever I create a new cluster, I want my cluster to deploy everything needed automatically, without requiring me to run a bunch of commands.
 
