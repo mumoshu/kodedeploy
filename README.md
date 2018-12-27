@@ -114,8 +114,10 @@ A blue-green deployment can be triggered by creating a deployment that specifies
 ```
 # The CodeDeploy application to which start sending traffic
 $ app=lb-app-1
-$ ./kode release cluster --application $app --cluster blue --bucket mybucket
-$ ./kode release cluster --application $app --cluster green --bucket mybucket
+$ blue_cluster_name=$(eksctl get cluster | grep blue | awk '{ print $1 }')
+$ green_cluster_name=$(eksctl get cluster | grep green | awk '{ print $1 }')
+$ ./kode release cluster --application ${app} --cluster ${blue_cluster} --bucket mybucket
+$ ./kode release cluster --application ${app} --cluster ${green_cluster} --bucket mybucket
 ```
 
 ## How it works
