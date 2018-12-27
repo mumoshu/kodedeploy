@@ -55,7 +55,7 @@ spec:
         - name: deployment-root
           mountPath: /opt/codedeploy-agent/deployment-root/
       - name: dind-daemon
-        image: mumoshu/aws/codedeploy-agent:dind-canary
+        image: mumoshu/aws-codedeploy-agent:dind-canary
         resources:
             requests:
                 cpu: 20m
