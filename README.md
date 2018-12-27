@@ -132,7 +132,7 @@ KodeDeploy, as you might have guessed from its name, exploits AWS CodeDeploy for
 
 KodeDeploy is just a set of helper scripts and a Kubernetes manifest to deploy CodeDeploy Agent along with a Docker daemon as a sidecar.
 
-## Getting Started
+## KodeDeploy The Hard Way
 
 ### Setup the runtime environment for agents
 
