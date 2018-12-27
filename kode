@@ -1,6 +1,39 @@
 #!/usr/bin/env variant-alpha
 
 tasks:
+  traffic-shift:
+    parameters:
+    - name: application
+      type: string
+      description: "the target codedeploy application"
+    - name: to-cluster
+      type: string
+      description: "the target cluster to start receiving traffic"
+    - name: nodegroup
+      type: string
+      description: "the target nodegroup to start receiving traffic"
+      default: ""
+    - name: bucket
+      type: string
+    script: |
+      set -vx
+      c="{{ get "to-cluster" }}"
+      cluster=$(eksctl get cluster | awk '{print $1}' | grep $c)
+      nodegroup="{{ get "nodegroup" }}"
+      if [ "$nodegroup" == "" ]; then
+        nodegroup=$(eksctl get nodegroup --cluster $cluster | grep $cluster | grep ami | awk '{print $2}')
+      fi
+      nodegroup_stack=eksctl-${cluster}-nodegroup-${nodegroup}
+      nodegroup_asg_name=$(aws cloudformation describe-stack-resources --stack-name $nodegroup_stack | jq -r '.StackResources[] | select(.ResourceType == "AWS::AutoScaling::AutoScalingGroup") | .PhysicalResourceId')
+
+      app="{{ get "application" }}"
+      asg=${nodegroup_asg_name}
+      key=codedeploy/node/myrev.zip
+      bucket="{{ get "bucket" }}"
+
+      aws deploy push --application-name $app --description "test deployment" --ignore-hidden-files --s3-location s3://${bucket}/${key} --source deploy/node
+      aws deploy create-deployment --application-name $app --deployment-group-name ${app}-dg --s3-location bucket=${bucket},key=${key},bundleType=zip --target-instances "{\"autoScalingGroups\":[\"${asg}\"]}"
+
   deregister:
     parameters:
     - name: namespace

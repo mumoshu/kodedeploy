@@ -74,12 +74,21 @@ $ git clone https://github.com/mumoshu/kodedeploy
 
 $ aws iam create-policy --policy-name codedeploy-node --policy-document file://$(pwd)/codedeploy-node.iampolicy.json
 
+$ aws iam attach-role-policy --role-name eksctl-attractive-sculpture-15457-NodeInstanceRole-1J1JD1JTQZ16Q --policy-arn arn:aws:iam::AWS_ACCOUNT_ID:policy/codedeploy-node
+
 $ kubectl apply -f codedeploy-node.daemonset.yaml
 ```
 
 Then, create an ALB/NLB and a target group for your app, and a deployment group that includes all the nodes in the first cluster that runs the codedeploy-node pods.
 
 A blue-green deployment can be triggered by creating a deployment that specifies an another ASG that contains all the nodes in the second cluster that runs the codedeploy-node pods.
+
+```
+# The CodeDeploy application to shift traffic
+$ app=lb-app-1
+$ ./kode traffic-shift --application $app --to-cluster blue --bucket mybucket
+$ ./kode traffic-shift --application $app --to-cluster green --bucket mybucket
+```
 
 ## How it works
 
