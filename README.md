@@ -37,6 +37,41 @@ One standard use-case of KodeDeploy is easing Kubernetes version upgrades in you
 
 ## Getting started
 
+Create a config file for the `kode` command:
+
+```
+$ AWS_DEFAULT_REGION=us-west-2
+$ echo <EOF > kode.yaml
+bucket: my-codedeploy-app-bundles-us-west-2
+application: lb-app-1
+environment: sandbox
+EOF
+```
+
+Provision a set of AWS resources for kodedeploy:
+
+```
+$ ./kode plan
+$ ./kode apply
+```
+
+Or provision them manually:
+
+```
+# S3 bucket for CodeDeploy
+# aws s3 create-bucket --bucket-name mybucket
+
+# CodeDeploy service role
+$ aws iam create-role --role-name codedeploy-service --assume-role-policy-document file://$(pwd)/codedeploy-service.assumerolepolicy.json
+$ aws iam attach-role-policy --role-name codedeploy-service --policy-arn arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
+
+# IAM policy for namespace agents
+$ aws iam create-policy --policy-name codedeploy-namespace --policy-document file://$(pwd)/codedeploy-namespace.iampolicy.json
+
+# IAM policy for node agents
+$ aws iam create-policy --policy-name codedeploy-node --policy-document file://$(pwd)/codedeploy-node.iampolicy.json
+```
+
 To start managing apps in the clusters:
 
 ```
@@ -44,16 +79,11 @@ $ go get -u github.com/mumoshu/variant
 
 $ git clone https://github.com/mumoshu/kodedeploy
 
-$ aws iam create-role --role-name codedeploy-service --assume-role-policy-document file://$(pwd)/codedeploy-service.assumerolepolicy.json
-$ aws iam attach-role-policy --role-name codedeploy-service --policy-arn arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
-
-$ aws iam create-policy --policy-name codedeploy-namespace --policy-document file://$(pwd)/codedeploy-namespace.iampolicy.json
-$ ns_policy_arn=$(aws iam list-policies | jq -r '.Policies[] | select(.PolicyName == "codedeploy-namespace") | .Arn')
-
 # For each namespace in the all the participated clusters, run:
 
 $ ./kode init --cluster cluster1 --environment staging --namespace mycoolproduct
 
+$ ns_policy_arn=$(aws iam list-policies | jq -r '.Policies[] | select(.PolicyName == "codedeploy-namespace") | .Arn')
 $ aws iam attach-user-policy --user-name name_of_the_registered_onprem_instance --policy-arn $ns_policy_arn
 
 # To deploy an application only to a single cluster "cluster1", run:
@@ -72,8 +102,6 @@ $ go get -u github.com/mumoshu/variant
 
 $ git clone https://github.com/mumoshu/kodedeploy
 
-$ aws iam create-policy --policy-name codedeploy-node --policy-document file://$(pwd)/codedeploy-node.iampolicy.json
-
 $ aws iam attach-role-policy --role-name eksctl-attractive-sculpture-15457-NodeInstanceRole-1J1JD1JTQZ16Q --policy-arn arn:aws:iam::AWS_ACCOUNT_ID:policy/codedeploy-node
 
 $ kubectl apply -f codedeploy-node.daemonset.yaml
@@ -84,10 +112,10 @@ Then, create an ALB/NLB and a target group for your app, and a deployment group 
 A blue-green deployment can be triggered by creating a deployment that specifies an another ASG that contains all the nodes in the second cluster that runs the codedeploy-node pods.
 
 ```
-# The CodeDeploy application to shift traffic
+# The CodeDeploy application to which start sending traffic
 $ app=lb-app-1
-$ ./kode traffic-shift --application $app --to-cluster blue --bucket mybucket
-$ ./kode traffic-shift --application $app --to-cluster green --bucket mybucket
+$ ./kode release cluster --application $app --cluster blue --bucket mybucket
+$ ./kode release cluster --application $app --cluster green --bucket mybucket
 ```
 
 ## How it works
