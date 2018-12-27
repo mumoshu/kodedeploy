@@ -1,13 +1,16 @@
 #!/usr/bin/env variant-alpha
 
 tasks:
+  bucket:
+    script: |
+      cd deploy/terraform
+      terraform output bucket
+
   plan:
     parameters:
     - name: application
       type: string
       description: "the target codedeploy application"
-    - name: bucket
-      type: string
     - name: environment
       type: string
     script: |
@@ -29,12 +32,14 @@ tasks:
         Import a CodeDeploy service role
 
         ./kode import --resource aws_iam_role.codedeploy_service --id codedeploy-service
+
+        Import a CodeDeploy service role policy attachment
+
+        ./kode import --resource aws_iam_role_policy_attachment.codedeploy_service --id codedeploy-service/arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
     parameters:
     - name: application
       type: string
       description: "the target codedeploy application"
-    - name: bucket
-      type: string
     - name: resource
       type: string
     - name: id
@@ -48,11 +53,17 @@ tasks:
     - name: application
       type: string
       description: "the target codedeploy application"
-    - name: bucket
+    - name: environment
       type: string
     script: |
       cd deploy/terraform
-      terraform apply -var env={{ get "environment" }}
+      terraform apply -var env={{ get "environment" }} -auto-approve
+
+  test:
+    inputs:
+    - name: bucket
+    script: |
+      echo {{ get "bucket" }}
 
   release:
     tasks:
@@ -61,7 +72,7 @@ tasks:
         - name: application
           type: string
           description: "the target codedeploy application"
-        - name: to-cluster
+        - name: cluster
           type: string
           description: "the target cluster to start receiving traffic"
         - name: nodegroup
@@ -72,7 +83,7 @@ tasks:
           type: string
         script: |
           set -vx
-          c="{{ get "to-cluster" }}"
+          c="{{ get "cluster" }}"
           cluster=$(eksctl get cluster | awk '{print $1}' | grep $c)
           nodegroup="{{ get "nodegroup" }}"
           if [ "$nodegroup" == "" ]; then
