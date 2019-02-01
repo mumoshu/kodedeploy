@@ -486,7 +486,7 @@ tasks:
       service_role_arn="$(jq -r .Role.Arn .kodedeploy.role.json)"
       rm .kodedeploy.role.json
         
-      # ${clusterenv}_${clusterns} e.g. production-tax-operation, staging-jigsaw
+      # ${clusterenv}_${clusterns} e.g. production-myproduct, staging-myteam
       # Note that one or more groups with the same name are created per application,
       # as groups are isolated by apps
       group="kodedeploy-env-${env}-ns-${ns}"
