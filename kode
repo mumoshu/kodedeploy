@@ -338,6 +338,7 @@ tasks:
     - name: cluster
       type: string
       description: "the name of the cluster to deploy the thing. basically use for one-off jobs"
+      default: ""
 
     script: |
       app={{ get "application" }}
