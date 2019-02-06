@@ -417,12 +417,6 @@ tasks:
       # | cloudwatch-logger -t "${log_group}" ${DEPLOYMENT_ID/stdout}
       EOS
 
-      cat <<EOS > helmfile.yaml
-      releases:
-      - name: foo
-        chart: stable/nginx
-      EOS
-
       chmod +x ${before_install} ${after_install}
 
       cd -
