@@ -171,116 +171,148 @@ tasks:
     - name: cluster
       type: string
       description: "the name of the cluster to deploy the thing. basically use for one-off jobs"
-    script: |
-      if ! kubectl version >/dev/null; then
-        echo '`kodedeploy register` requires an valid k8s api access`' 1>&2
-        exit 1
-      fi
-      
-      ns={{ get "namespace" }}
-      env={{ get "environment" }}
-      cluster={{ get "cluster" }}
 
-      env=${env?missing value. specify e.g. production, staging, test, preview}
-      ns=${ns?missing value. specify k8s namespace = your team, product, or project name}
-      cluster=${cluster?missing value. specify cluster}
-      
-      # this equals to the iam user name
-      instance_name="${env}-${ns}-${cluster}"
+    mixins:
+      check_version: &check_version |
+        if ! kubectl version >/dev/null; then
+          echo '`kodedeploy register` requires an valid k8s api access`' 1>&2
+          exit 1
+        fi
 
-      aws deploy register \
-        --instance-name ${instance_name} \
-        --tags Key=kodedeployenv,Value={{ get "environment" }} Key=kodedeploycluster,\
-      Value={{ get "cluster" }} Key=kodedeployns,Value={{ get "namespace" }}
+      get_parames: &get_parames |
+        ns={{ get "namespace" }}
+        env={{ get "environment" }}
+        cluster={{ get "cluster" }}
 
-      dir=.awscodectl/tmp/${instance_name}/etc-codedeploy-agent-conf
-      #rm -rf ${dir}
-      mkdir -p "${dir}"
+        ns=${ns?missing value. specify k8s namespace = your team, product, or project name}
+        env=${env?missing value. specify e.g. production, staging, test, preview}
+        cluster=${cluster?missing value. specify cluster}
 
-      mv codedeploy.onpremises.yml "${dir}/"
+        # this equals to the iam user name
+        instance_name="${env}-${ns}-${cluster}"
 
-      kubectl create namespace ${ns}
+      make_etc_codedeploy_agent_conf: &make_etc_codedeploy_agent_conf |
+        etc_codedeploy_agent_conf_dir=.awscodectl/tmp/${instance_name}/etc-codedeploy-agent-conf
+        mkdir -p "${etc_codedeploy_agent_conf_dir}"
 
-      kubectl --namespace ${ns} \
-        create secret generic --from-file=${dir} $(basename $dir)
+        instance=`aws deploy get-on-premises-instance --instance-name ${instance_name} 2> /dev/null`
+        if [ "${instance}" == "" ]; then
+          if [ $dryrun == "true" ]; then
+            echo "aws deploy \"${instance_name}\" registered (dry run)"
+            touch codedeploy.onpremises.yml "${etc_codedeploy_agent_conf_dir}/codedeploy.onpremises.yml"
+          else
+            aws deploy register \
+                --instance-name ${instance_name} \
+                --tags Key=kodedeployenv,Value={{ get "environment" }}\
+                       Key=kodedeploycluster,Value={{ get "cluster" }}\
+                       Key=kodedeployns,Value={{ get "namespace" }}
+            mv codedeploy.onpremises.yml "${etc_codedeploy_agent_conf_dir}/"
+          fi
+        fi
 
-      anotherdir=.awscodectl/tmp/${instance_name}/opt-codedeploy-agent-conf
-      #rm -rf ${anotherdir}
-      mkdir -p "${anotherdir}"
+      make_opt_codedeploy_agent_conf: &make_opt_codedeploy_agent_conf |
+        opt_codedeploy_agent_conf_dir=.awscodectl/tmp/${instance_name}/opt-codedeploy-agent-conf
+        mkdir -p "${opt_codedeploy_agent_conf_dir}"
 
-      cat <<EOS > "${anotherdir}/codedeployagent.yml"
-      ---
-      :log_aws_wire: false
-      :log_dir: '/var/log/aws/codedeploy-agent/'
-      :pid_dir: '/opt/codedeploy-agent/state/.pid/'
-      :program_name: codedeploy-agent
-      :root_dir: '/opt/codedeploy-agent/deployment-root'
-      :verbose: false
-      :wait_between_runs: 1
-      :proxy_uri:
-      :max_revisions: 5
-      EOS
+        cat <<EOS > "${opt_codedeploy_agent_conf_dir}/codedeployagent.yml"
+        ---
+        :log_aws_wire: false
+        :log_dir: '/var/log/aws/codedeploy-agent/'
+        :pid_dir: '/opt/codedeploy-agent/state/.pid/'
+        :program_name: codedeploy-agent
+        :root_dir: '/opt/codedeploy-agent/deployment-root'
+        :verbose: false
+        :wait_between_runs: 1
+        :proxy_uri:
+        :max_revisions: 5
+        EOS
 
-      kubectl --namespace ${ns} \
-        create configmap --from-file="${anotherdir}" $(basename $anotherdir)
-      
-      keyid=$(cat ${dir}/codedeploy.onpremises.yml | grep aws_access_key_id | cut -f2 -d' ')
-      secretkey=$(cat ${dir}/codedeploy.onpremises.yml | grep aws_secret_access_key | cut -f2 -d' ')
+      make_cloudwatch_agent_conf: &make_cloudwatch_agent_conf |
+        keyid=$(cat ${etc_codedeploy_agent_conf_dir}/codedeploy.onpremises.yml | grep aws_access_key_id | cut -f2 -d' ')
+        secretkey=$(cat ${etc_codedeploy_agent_conf_dir}/codedeploy.onpremises.yml | grep aws_secret_access_key | cut -f2 -d' ')
 
-      awsdir=.awscodectl/tmp/${instance_name}/cloudwatch-agent-aws
-      #rm -rf ${awsdir}
-      mkdir -p "${awsdir}"
-      
-      cat <<EOS > ${awsdir}/credentials
-      [AmazonCloudWatchAgent]
-      aws_access_key_id = $keyid
-      aws_secret_access_key = $secretkey
-      region=ap-northeast-1
-      
-      [awscloudwatchagent]
-      aws_access_key_id = $keyid
-      aws_secret_access_key = $secretkey
-      region=ap-northeast-1
-      EOS
+        aws_dir=.awscodectl/tmp/${instance_name}/cloudwatch-agent-aws
+        mkdir -p "${aws_dir}"
 
-      kubectl --namespace ${ns} \
-        create secret generic --from-file="${awsdir}" $(basename $awsdir)
+        cat <<EOS > ${aws_dir}/credentials
+        [AmazonCloudWatchAgent]
+        aws_access_key_id = $keyid
+        aws_secret_access_key = $secretkey
+        region=ap-northeast-1
 
-      cwconfdir=.awscodectl/tmp/${instance_name}/cloudwatch-agent-conf
-      mkdir -p "${cwconfdir}"
-      
-      # See https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Agent-Configuration-File-Details.html
-      cat <<EOS > ${cwconfdir}/config.json
-      {
-        "logs": {
-          "logs_collected": {
-            "files": {
-              "collect_list": [
-                {
-                  "file_path": "/var/log/messages",
-                  "log_group_name": "messages"
-                },
-                {
-                  "file_path": "/opt/codedeploy-agent/deployment-root/**/scripts.log",
-                  "log_group_name": "kodedeploy/deployments",
-                  "log_stream_name": "scripts"
-                }
-              ]
+        [awscloudwatchagent]
+        aws_access_key_id = $keyid
+        aws_secret_access_key = $secretkey
+        region=ap-northeast-1
+        EOS
+
+        cloudwatch_agent_conf_dir=.awscodectl/tmp/${instance_name}/cloudwatch-agent-conf
+        mkdir -p "${cloudwatch_agent_conf_dir}"
+
+        # See https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Agent-Configuration-File-Details.html
+        cat <<EOS > ${cloudwatch_agent_conf_dir}/config.json
+        {
+          "logs": {
+            "logs_collected": {
+              "files": {
+                "collect_list": [
+                  {
+                    "file_path": "/var/log/messages",
+                    "log_group_name": "messages"
+                  },
+                  {
+                    "file_path": "/opt/codedeploy-agent/deployment-root/**/scripts.log",
+                    "log_group_name": "kodedeploy/deployments",
+                    "log_stream_name": "scripts"
+                  }
+                ]
+              }
             }
           }
         }
-      }
-      EOS
+        EOS
 
-      kubectl --namespace ${ns} \
-        create configmap --from-file="${cwconfdir}" $(basename $cwconfdir)
+      apply: &apply |
+        kubectl create namespace ${ns} --dry-run=$dryrun
 
-      #rm -rf ${cwconfdir}
+        kubectl --dry-run=$dryrun --namespace ${ns} \
+          create secret generic --from-file=${etc_codedeploy_agent_conf_dir} $(basename $etc_codedeploy_agent_conf_dir)
 
-      kubectl --namespace ${ns} apply -f deploy.yaml
+        kubectl --dry-run=$dryrun --namespace ${ns} \
+          create configmap --from-file="${opt_codedeploy_agent_conf_dir}" $(basename $opt_codedeploy_agent_conf_dir)
 
-      kubectl get secret,configmap,pod -n ${ns}
-  
+        kubectl --dry-run=$dryrun --namespace ${ns} \
+          create secret generic --from-file="${aws_dir}" $(basename $aws_dir)
+
+        kubectl --dry-run=$dryrun --namespace ${ns} \
+          create configmap --from-file="${cloudwatch_agent_conf_dir}" $(basename $cloudwatch_agent_conf_dir)
+
+        kubectl --dry-run=$dryrun --namespace ${ns} apply -f deploy.yaml
+
+        kubectl get secret,configmap,pod -n ${ns}
+
+    script:
+    - |
+      dryrun=false
+    - *check_version
+    - *get_parames
+    - *make_etc_codedeploy_agent_conf
+    - *make_opt_codedeploy_agent_conf
+    - *make_cloudwatch_agent_conf
+    - *apply
+
+    tasks:
+      plan:
+        script:
+        - |
+          dryrun=true
+        - *check_version
+        - *get_parames
+        - *make_etc_codedeploy_agent_conf
+        - *make_opt_codedeploy_agent_conf
+        - *make_cloudwatch_agent_conf
+        - *apply
+
   run:
     parameters:
     - name: namespace
