@@ -148,17 +148,17 @@ tasks:
       fi
 
       codedeploy="kodedeploy-env-${env}-ns-${ns}-app-${app}"
-      
+
       env=${env?missing value. specify e.g. production, staging, test, preview}
       ns=${ns?missing value. specify k8s namespace = your team, product, or project name}
       group="kodedeploy-env-${env}-ns-${ns}"
       if [ "${cluster}" != "" ]; then
         group="${group}-cluster-${cluster}"
       fi
-      
+
       deploy_group_id=$(aws deploy get-deployment-group --deployment-group-name $group --application $app | tee /dev/stderr | jq .DeploymentGroup.Id)
       deploy_id=$(aws deploy get-deployment --deployment-group-name $group --application $app | tee /dev/stderr | jq .Deployment.Id)
-      
+
       cw tail --stream-name --follow kodedeploy/deploys/"${group}" "${deploy_id}"/\*
 
   init:
@@ -371,198 +371,247 @@ tasks:
       type: string
       description: "the name of the cluster to deploy the thing. basically use for one-off jobs"
       default: ""
+    - name: revision
+      type: string
+      default: myrev
 
-    script: |
-      app={{ get "application" }}
-      ns={{ get "namespace" }}
-      env={{ get "environment" }}
-      cluster={{ get "cluster" }}
-      source={{ get "directory" }}
-      bucket={{ get "bucket" }}
+    mixins:
+      get_parames: &get_parames |
+        ns={{ get "namespace" }}
+        env={{ get "environment" }}
+        app={{ get "application" }}
+        source={{ get "directory" }}
+        bucket={{ get "bucket" }}
+        cluster={{ get "cluster" }}
+        revision={{ get "revision" }}
 
-      dir=$(basename $(pwd))
+        if [ "${ns}" == "" -a "${app}" == "" ]; then
+          dir=$(basename $(pwd))
+          app="${dir}"
+          ns="${dir}"
+        elif [ "${app}" != "" -a "${ns}" == "" ]; then
+          echo "application is specified but namespace. they must be specified at once, or completely ommitted." 1>&2
+          exit 1
+        elif [ "${app}" == "" -a "${ns}" != "" ]; then
+          echo "namespace is specified but application. they must be specified at once, or completely omitted." 1>&2
+          exit 1
+        fi
 
-      if [ "${ns}" == "" -a "${app}" == "" ]; then
-        app="${dir}"
-        ns="${dir}"
-      elif [ "${app}" != "" -a "${ns}" == "" ]; then
-        echo "application is specified but namespace. they must be specified at once, or completely ommitted." 1>&2
-        exit 1
-      elif [ "${app}" == "" -a "${ns}" != "" ]; then
-        echo "namespace is specified but application. they must be specified at once, or completely omitted." 1>&2
-        exit 1
-      fi
-        
-      if [ "${source}" == "" ]; then
-        source="$(pwd)"
-      fi
+        if [ "${source}" == "" ]; then
+          source="$(pwd)"
+        fi
 
-      echo app=${app} ns=${ns} env=${env} source=${source}
+        env=${env?missing value. specify e.g. production, staging, test, preview}
+        bucket=${bucket?required value}
 
-      mkdir -p "${source}"
-      cd "${source}"
+        bundletype=zip
+        key=codedeploy/${app}/${revision}.${bundletype}
 
-      before_install=before-install.sh
-      after_install=after-install.sh
+        app="kodedeploy-env-${env}-ns-${ns}-app-${app}"
 
-      cat <<EOS > appspec.yml
-      version: 0.0
-      os: linux
-      #files:
-      #  - source: deploy
-      #    destination: /deploy
-      hooks:
-        BeforeInstall:
-        - location: ${before_install}
-          timeout: 180
-        AfterInstall:
-        - location: ${after_install}
-          timeout: 180
-      EOS
+        # ${clusterenv}_${clusterns} e.g. production-myproduct, staging-myteam
+        # Note that one or more groups with the same name are created per application,
+        # as groups are isolated by apps
+        if [ "${cluster}" == "" ]; then
+          group="kodedeploy-env-${env}-ns-${ns}"
+        else
+          group="kodedeploy-env-${env}-ns-${ns}-cluster-${cluster}"
+        fi
 
-      cat <<EOS > "${before_install}"
-      #!/usr/bin/env bash
-      #rm -rf /deploy
-      echo before install
-      EOS
+      make_cocedeploy_conf: &make_cocedeploy_conf |
+        mkdir -p "${source}"
+        cd "${source}"
 
-      cat <<'EOS' > "${after_install}"
-      #!/usr/bin/env bash
-      set -vx
-      wd="${WORK_DIR:-/opt/codedeploy-agent/deployment-root/${DEPLOYMENT_GROUP_ID}/${DEPLOYMENT_ID}/deployment-archive}"
-      image="{{ get "image" }}"
-      # To use kodedeploy pod's serviceaccount to access Kubernetes API
-      sd="/var/run/secrets/kubernetes.io/serviceaccount/"
-      cmd="{{.command}}"
+        before_install=before-install.sh
+        after_install=after-install.sh
 
-      log_group=kodedeploy/deploys/${DEPLOYMENT_GROUP_NAME}
+        cat <<EOS > appspec.yml
+        version: 0.0
+        os: linux
+        #files:
+        #  - source: deploy
+        #    destination: /deploy
+        hooks:
+          BeforeInstall:
+          - location: ${before_install}
+            timeout: 180
+          AfterInstall:
+          - location: ${after_install}
+            timeout: 180
+        EOS
 
-      exec 2> >(sed "s/^/err/" | cloudwatch-logger -t "${log_group}" ${DEPLOYMENT_ID}/stderr)
+        cat <<EOS > "${before_install}"
+        #!/usr/bin/env bash
+        #rm -rf /deploy
+        echo before install
+        EOS
 
-      docker run -v "${wd}:${wd}" -v "${sd}:${sd}" \
+        cat <<'EOS' > "${after_install}"
+        #!/usr/bin/env bash
+        set -vx
+        wd="${WORK_DIR:-/opt/codedeploy-agent/deployment-root/${DEPLOYMENT_GROUP_ID}/${DEPLOYMENT_ID}/deployment-archive}"
+        image="{{ get "image" }}"
+        # To use kodedeploy pod's serviceaccount to access Kubernetes API
+        sd="/var/run/secrets/kubernetes.io/serviceaccount/"
+        cmd="{{.command}}"
+
+        log_group=kodedeploy/deploys/${DEPLOYMENT_GROUP_NAME}
+
+        exec 2> >(sed "s/^/err/" | cloudwatch-logger -t "${log_group}" ${DEPLOYMENT_ID}/stderr)
+
+        docker run -v "${wd}:${wd}" -v "${sd}:${sd}" \
         -e "KUBERNETES_SERVICE_HOST=${KUBERNETES_SERVICE_HOST}" \
         -e "KUBERNETES_SERVICE_PORT=${KUBERNETES_SERVICE_PORT}" \
         -e "KUBE_DNS_SERVICE_HOST=${KUBE_DNS_SERVICE_HOST}" \
         -e "KUBE_DNS_SERVICE_PORT=${KUBE_DNS_SERVICE_PORT}" \
         --rm -w "${wd}" \
         "${image}" bash -c "${cmd}"
-      # | cloudwatch-logger -t "${log_group}" ${DEPLOYMENT_ID/stdout}
-      EOS
+        # | cloudwatch-logger -t "${log_group}" ${DEPLOYMENT_ID/stdout}
+        EOS
+        chmod +x ${before_install} ${after_install}
 
-      chmod +x ${before_install} ${after_install}
+        cd -
+        tree "${source}"
 
-      cd -
-
-      tree "${source}"
-
-      #cd "${source}"
-      #  WORK_DIR=$(pwd) ./after-install.sh
-      
-      app=${app?missing value. specify the name of one microservice within your ns, that is one of: $(list_apps)}
-      env=${env?missing value. specify e.g. production, staging, test, preview}
-      ns=${ns?missing value. specify k8s namespace = your team, product, or project name}
-      dir=$(cd $(dirname $0); pwd)
-      source=${source?missing value. specifiy path/to/dir}
-      revision=myrev
-      bundletype=zip
-      key=codedeploy/${app}/${revision}.${bundletype}
-      bucket=${bucket?required value}
-
-      app="kodedeploy-env-${env}-ns-${ns}-app-${app}"
-
-      aws deploy get-application --application-name $app
-      code=$?
-      if [ $code -eq 255 ]; then
-        echo creating $app...
-        if ! aws deploy create-application --application-name $app >/dev/null; then
-          echo failed creating $app 1>&2
-          exit 1
+      create_codedeploy_application: &create_codedeploy_application |
+        aws deploy get-application --application-name $app 2> /dev/null
+        code=$?
+        if [ $code -eq 255 ]; then
+          if [ $dryrun == "true" ]; then
+            echo "aws deploy created application \"$app\" (dry run)"
+          else
+            if ! aws deploy create-application --application-name $app >/dev/null; then
+              echo failed creating $app 1>&2
+              exit 1
+            fi
+          fi
         fi
-      fi
 
-      aws deploy push \
-        --application-name ${app} \
-        --description "${myrev}" \
-        --ignore-hidden-files \
-        --s3-location s3://${bucket}/${key} \
-        --source ${source}
-      
-      #config=CodeDeployDefault.OneAtATime
-      config=CodeDeployDefault.AllAtOnce
-
-      # TODO better name
-      role=kodedeploy
-      aws iam get-role --role-name "${role}" >.kodedeploy.role.json
-      code=$?
-      if [ $code -eq 255 ]; then
-        echo "creating role \"${role}\""
-        aws iam create-role --role-name "${role}" --assume-role-policy-document '{
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Sid": "",
-          "Effect": "Allow",
-          "Principal": {
-            "Service": "codedeploy.amazonaws.com"
-          },
-          "Action": "sts:AssumeRole"
-        }
-      ]
-      }' >.kodedeploy.role.json
-      fi
-      service_role_arn="$(jq -r .Role.Arn .kodedeploy.role.json)"
-      rm .kodedeploy.role.json
-        
-      # ${clusterenv}_${clusterns} e.g. production-myproduct, staging-myteam
-      # Note that one or more groups with the same name are created per application,
-      # as groups are isolated by apps
-      group="kodedeploy-env-${env}-ns-${ns}"
-
-      if [ "${cluster}" != "" ]; then
-        group="${group}-cluster-${cluster}"
-      fi
-
-      aws deploy get-deployment-group --application-name "${app}" \
-        --deployment-group-name "${group}" >/dev/null
-      code=$?
-      if [ $code -eq 255 ]; then
-        echo "creating deployment group \"${group}\"..."
-        aws deploy create-deployment-group \
-          --application-name $app \
-          --deployment-group-name "${group}" \
-          --service-role-arn "${service_role_arn}" \
-          --on-premises-tag-set '{"onPremisesTagSetList":[[{"Key":"kodedeployenv","Value":"'${env}'","Type":"KEY_AND_VALUE"}], [{"Key":"kodedeploycluster","Value":"'${cluster}'","Type":"KEY_AND_VALUE"}], [{"Key":"kodedeployns","Value":"'${ns}'","Type":"KEY_AND_VALUE"}]]}' \
-          >/dev/null
-        if [ $? -ne 0 ]; then
-          echo "failed creating \"${group}\"" 1>&2
-          exit 1
+      push_codedeploy_application: &push_codedeploy_application |
+        if [ $dryrun == "true" ]; then
+          echo "aws deploy pushed ${source} to s3://${bucket}/${key} (dry run)"
+        else
+          aws deploy push \
+            --application-name ${app} \
+            --description "${myrev}" \
+            --ignore-hidden-files \
+            --s3-location s3://${bucket}/${key} \
+            --source ${source}
         fi
-      fi
-      
-      # Btw, the instance name could be, for example, production-k8s1-tax-operation, staging-stk8s1-jigsaw
-      
-      aws deploy create-deployment \
-        --application-name ${app} \
-        --deployment-config-name ${config} \
-        --deployment-group-name ${group} \
-        --s3-location bucket=${bucket},key=${key},bundleType=${bundletype} > .kodedeploy.deployment.json
-      
-      deploy_id="$(jq -r .deploymentId .kodedeploy.deployment.json)"
 
-      echo "deployment \"${deploy_id}\" created."
-      
-      aws deploy wait deployment-successful --deployment-id "${deploy_id}"
+      get_or_create_service_role: &get_or_create_service_role |
+        # TODO better name
+        role=kodedeploy
+        aws iam get-role --role-name "${role}" >.kodedeploy.role.json 2> /dev/null
+        code=$?
+        if [ $code -eq 255 ]; then
+          if [ $dryrun == "true" ]; then
+            echo "aws iam created role \"${role}\" (dry run)"
+            service_role_arn="dummy"
+            touch.kodedeploy.role.json
+          else
+            aws iam create-role --role-name "${role}" --assume-role-policy-document '{
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "",
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "codedeploy.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+            }' >.kodedeploy.role.json
+          fi
+        fi
+        service_role_arn="$(jq -r .Role.Arn .kodedeploy.role.json)"
+        rm .kodedeploy.role.json
 
-      code=$?
+      create_deployment_group: &create_deployment_group |
+        aws deploy get-deployment-group --application-name "${app}" \
+          --deployment-group-name "${group}" 2>/dev/null
+        code=$?
+        if [ $code -eq 255 ]; then
+          if [ "${cluster}" == "" ]; then
+            tagset='{
+              "onPremisesTagSetList":[
+                [{"Key":"kodedeployenv","Value":"'${env}'","Type":"KEY_AND_VALUE"}],
+                [{"Key":"kodedeployns","Value":"'${ns}'","Type":"KEY_AND_VALUE"}]
+              ]
+            }'
+          else
+            tagset='{
+              "onPremisesTagSetList":[
+                [{"Key":"kodedeployenv","Value":"'${env}'","Type":"KEY_AND_VALUE"}],
+                [{"Key":"kodedeploycluster","Value":"'${cluster}'","Type":"KEY_AND_VALUE"}],
+                [{"Key":"kodedeployns","Value":"'${ns}'","Type":"KEY_AND_VALUE"}]
+              ]
+            }'
+          fi
+          if [ $dryrun == "true" ]; then
+            echo "aws deploy created deployment-group \"${group}\" (dry run)"
+            echo on-premisses-tag-set: ${tagset}
+          else
+            aws deploy create-deployment-group \
+              --application-name $app \
+              --deployment-group-name "${group}" \
+              --service-role-arn "${service_role_arn}" \
+              --on-premises-tag-set "${tagset}" \
+              >/dev/null
+            if [ $? -ne 0 ]; then
+              echo "failed creating \"${group}\"" 1>&2
+              exit 1
+            fi
+          fi
+        fi
 
-      if [ $code -ne 0 ]; then
-        echo exit code: $code 1>&2
+      deploy: &deploy |
+        if [ $dryrun == "true" ]; then
+          echo "aws deploy created deployment for \"$app\" (dry run)"
+        else
+          config=CodeDeployDefault.AllAtOnce
+          aws deploy create-deployment \
+            --application-name ${app} \
+            --deployment-config-name ${config} \
+            --deployment-group-name ${group} \
+            --s3-location bucket=${bucket},key=${key},bundleType=${bundletype} > .kodedeploy.deployment.json
 
-        aws deploy get-deployment --deployment-id "${deploy_id}" > .kodedeploy.deployment.json
-        err_code=$(jq -r .deploymentInfo.errorInformation.code .kodedeploy.deployment.json)
-        err_mesg=$(jq -r .deploymentInfo.errorInformation.message .kodedeploy.deployment.json)
-        
-        echo "${err_code}: ${err_mesg}" 1>&2
-        
-        exit 1
-      fi
+          deploy_id="$(jq -r .deploymentId .kodedeploy.deployment.json)"
+          echo "aws deploy created deployment for \"$app\""
+
+          aws deploy wait deployment-successful --deployment-id "${deploy_id}"
+          code=$?
+          if [ $code -ne 0 ]; then
+            echo exit code: $code 1>&2
+
+            aws deploy get-deployment --deployment-id "${deploy_id}" > .kodedeploy.deployment.json
+            err_code=$(jq -r .deploymentInfo.errorInformation.code .kodedeploy.deployment.json)
+            err_mesg=$(jq -r .deploymentInfo.errorInformation.message .kodedeploy.deployment.json)
+            echo "${err_code}: ${err_mesg}" 1>&2
+          fi
+        fi
+
+    script:
+    - |
+      dryrun=false
+    - *get_parames
+    - *make_cocedeploy_conf
+    - *create_codedeploy_application
+    - *push_codedeploy_application
+    - *get_or_create_service_role
+    - *create_deployment_group
+    - *deploy
+
+    tasks:
+      plan:
+        script:
+        - |
+          dryrun=true
+        - *get_parames
+        - *make_cocedeploy_conf
+        - *create_codedeploy_application
+        - *push_codedeploy_application
+        - *get_or_create_service_role
+        - *create_deployment_group
+        - *deploy
