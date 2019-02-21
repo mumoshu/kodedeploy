@@ -589,6 +589,7 @@ tasks:
             err_code=$(jq -r .deploymentInfo.errorInformation.code .kodedeploy.deployment.json)
             err_mesg=$(jq -r .deploymentInfo.errorInformation.message .kodedeploy.deployment.json)
             echo "${err_code}: ${err_mesg}" 1>&2
+            exit $code
           fi
         fi
 
