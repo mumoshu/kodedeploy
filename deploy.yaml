@@ -76,6 +76,7 @@ spec:
           subPath: credentials
         - name: cloudwatch-agent-conf
           mountPath: /etc/aws/amazon-cloudwatch-agent
+      serviceAccountName: kodedeploy
       volumes:
       - name: deployment-root
         emptyDir: {}
