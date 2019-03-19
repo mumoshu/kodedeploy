@@ -100,30 +100,6 @@ tasks:
           aws deploy push --application-name $app --description "test deployment" --ignore-hidden-files --s3-location s3://${bucket}/${key} --source deploy/node
           aws deploy create-deployment --application-name $app --deployment-group-name ${app}-dg --s3-location bucket=${bucket},key=${key},bundleType=zip --target-instances "{\"autoScalingGroups\":[\"${asg}\"]}"
 
-  deregister:
-    parameters:
-    - name: namespace
-      type: string
-      default: ""
-    - name: environment
-      type: string
-    - name: cluster
-      type: string
-      description: "the name of the cluster to deploy the thing. basically use for one-off jobs"
-      default: ""
-    script: |
-      user="{{ get "environment" }}-{{ get "namespace" }}-{{ get "cluster" }}"
-
-      # Avoid the `An error occurred (DeleteConflict) when calling the DeleteUser operation: Cannot delete entity, must delete policies first.` error
-      aws iam list-user-policies --user-name "${user}"
-      aws iam delete-user-policy --user-name "${user}" --policy-name codedeploy-agent
-
-      # Avoid the `An error occurred (DeleteConflict) when calling the DeleteUser operation: Cannot delete entity, must delete access keys first.` error
-      key_id=$(aws iam list-access-keys --user-name "${user}" | jq -r '.AccessKeyMetadata[].AccessKeyId')
-      aws iam delete-access-key --user-name "${user}" --access-key-id "${key_id}"
-
-      aws deploy deregister-on-premises-instance --instance-name "${user}"
-      aws iam delete-user --user-name "${user}"
   logs:
     parameters:
     - name: application
@@ -200,6 +176,7 @@ tasks:
           if [ $dryrun == "true" ]; then
             echo "aws deploy \"${instance_name}\" registered (dry run)"
             touch codedeploy.onpremises.yml "${etc_codedeploy_agent_conf_dir}/codedeploy.onpremises.yml"
+            echo "aws iam put-user-policy codedeploy-namespace to ${instance_name} (dry run)"
           else
             aws deploy register \
                 --instance-name ${instance_name} \
@@ -207,6 +184,10 @@ tasks:
                        Key=kodedeploycluster,Value={{ get "cluster" }}\
                        Key=kodedeployns,Value={{ get "namespace" }}
             mv codedeploy.onpremises.yml "${etc_codedeploy_agent_conf_dir}/"
+            aws iam put-user-policy \
+              --user-name ${instance_name} \
+              --policy-name codedeploy-namespace \
+              --policy-document file://codedeploy-namespace.iampolicy.json
           fi
         fi
 
@@ -273,7 +254,7 @@ tasks:
         EOS
 
       apply: &apply |
-       kubectl --dry-run=$dryrun create namespace kodedeploy --dry-run=$dryrun
+        kubectl --dry-run=$dryrun create namespace kodedeploy --dry-run=$dryrun
 
         kubectl --dry-run=$dryrun --namespace kodedeploy \
           create secret generic --from-file=${etc_codedeploy_agent_conf_dir} $(basename $etc_codedeploy_agent_conf_dir)
@@ -286,6 +267,8 @@ tasks:
 
         kubectl --dry-run=$dryrun --namespace kodedeploy \
           create configmap --from-file="${cloudwatch_agent_conf_dir}" $(basename $cloudwatch_agent_conf_dir)
+
+        kubectl --dry-run=$dryrun --namespace kodedeploy apply -f serviceaccount.yaml
 
         kubectl --dry-run=$dryrun --namespace kodedeploy apply -f deploy.yaml
 
@@ -312,6 +295,42 @@ tasks:
         - *make_opt_codedeploy_agent_conf
         - *make_cloudwatch_agent_conf
         - *apply
+
+      rollback:
+        mixins:
+          deregister: &deregister |
+            # Avoid the `An error occurred (DeleteConflict) when calling the DeleteUser operation: Cannot delete entity, must delete policies first.` error
+            aws iam list-user-policies --user-name "${instance_name}"
+            aws iam delete-user-policy --user-name "${instance_name}" --policy-name codedeploy-agent
+            aws iam delete-user-policy --user-name "${instance_name}" --policy-name codedeploy-namespace
+
+            # Avoid the `An error occurred (DeleteConflict) when calling the DeleteUser operation: Cannot delete entity, must delete access keys first.` error
+            key_id=$(aws iam list-access-keys --user-name "${instance_name}" | jq -r '.AccessKeyMetadata[].AccessKeyId')
+            aws iam delete-access-key --user-name "${instance_name}" --access-key-id "${key_id}"
+
+            aws deploy deregister-on-premises-instance --instance-name "${instance_name}"
+            aws iam delete-user --user-name "${instance_name}"
+          apply_rollback: &apply_rollback |
+            kubectl --namespace kodedeploy get secret,configmap,pod
+
+            kubectl --namespace kodedeploy delete -f deploy.yaml
+
+            kubectl --namespace kodedeploy delete -f serviceaccount.yaml
+
+            kubectl --namespace kodedeploy delete configmap cloudwatch-agent-conf
+
+            kubectl --namespace kodedeploy delete configmap opt-codedeploy-agent-conf
+
+            kubectl --namespace kodedeploy delete secrets cloudwatch-agent-aws
+
+            kubectl --namespace kodedeploy delete secrets etc-codedeploy-agent-conf
+
+            kubectl --namespace kodedeploy get secret,configmap,pod
+        script:
+          - *check_version
+          - *get_parames
+          - *deregister
+          - *apply_rollback
 
   run:
     parameters:
