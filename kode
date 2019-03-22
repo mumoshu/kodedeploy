@@ -485,8 +485,7 @@ tasks:
         -e "KUBE_DNS_SERVICE_HOST=${KUBE_DNS_SERVICE_HOST}" \
         -e "KUBE_DNS_SERVICE_PORT=${KUBE_DNS_SERVICE_PORT}" \
         --rm -w "${wd}" \
-        "${image}" bash -c "${cmd}"
-        # | cloudwatch-logger -t "${log_group}" ${DEPLOYMENT_ID/stdout}
+        "${image}" bash -c "${cmd}" | cloudwatch-logger -t "${log_group}" ${DEPLOYMENT_ID/stdout}
         EOS
         chmod +x ${before_install} ${after_install}
 
@@ -611,6 +610,9 @@ tasks:
             echo "${err_code}: ${err_mesg}" 1>&2
             exit $code
           fi
+          aws logs get-log-events \
+            --log-group-name kodedeploy/deploys/${group} \
+            --log-stream-name ${deploy_id} | jq -r '.events[].message' | sed '/^\s*$/d'
         fi
 
     script:
