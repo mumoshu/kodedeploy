@@ -466,6 +466,23 @@ tasks:
         echo before install
         EOS
 
+        cat <<EOS "after-install-lib.sh"
+        #!/usr/bin/env bash
+        set -eo pipefail
+        error() {
+          status=(${PIPESTATUS[@]})
+          echo status=${status[@]} 1>&2
+          for ((i=0; i<${#status[@]}; i++)); do
+            c=${status[$i]}
+            echo exit status of command $i: $c
+            if [ "$c" != 0 ]; then
+              return $c
+            fi
+          done
+        }
+        trap error ERR
+        EOS
+
         cat <<'EOS' > "${after_install}"
         #!/usr/bin/env bash
         set -vx
@@ -485,7 +502,7 @@ tasks:
         -e "KUBE_DNS_SERVICE_HOST=${KUBE_DNS_SERVICE_HOST}" \
         -e "KUBE_DNS_SERVICE_PORT=${KUBE_DNS_SERVICE_PORT}" \
         --rm -w "${wd}" \
-        "${image}" bash -c "${cmd}" | cloudwatch-logger -t "${log_group}" ${DEPLOYMENT_ID/stdout}
+        "${image}" bash -c ". ./after-install-lib.sh; ${cmd}" | cloudwatch-logger -t "${log_group}" ${DEPLOYMENT_ID/stdout}
         EOS
         chmod +x ${before_install} ${after_install}
 
