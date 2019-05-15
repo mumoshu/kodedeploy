@@ -466,7 +466,7 @@ tasks:
         echo before install
         EOS
 
-        cat <<EOS "after-install-lib.sh"
+        cat <<EOS > "after-install-lib.sh"
         #!/usr/bin/env bash
         set -eo pipefail
         error() {
@@ -503,6 +503,7 @@ tasks:
         -e "KUBE_DNS_SERVICE_PORT=${KUBE_DNS_SERVICE_PORT}" \
         --rm -w "${wd}" \
         "${image}" bash -c ". ./after-install-lib.sh; ${cmd}" | cloudwatch-logger -t "${log_group}" ${DEPLOYMENT_ID/stdout}
+        exit ${PIPESTATUS[0]}
         EOS
         chmod +x ${before_install} ${after_install}
 
@@ -619,6 +620,10 @@ tasks:
           aws deploy wait deployment-successful --deployment-id "${deploy_id}"
           code=$?
           if [ $code -ne 0 ]; then
+            aws logs get-log-events \
+              --log-group-name kodedeploy/deploys/${group} \
+              --log-stream-name ${deploy_id}/stderr | jq -r '.events[].message' | sed '/^\s*$/d'
+
             echo exit code: $code 1>&2
 
             aws deploy get-deployment --deployment-id "${deploy_id}" > .kodedeploy.deployment.json
